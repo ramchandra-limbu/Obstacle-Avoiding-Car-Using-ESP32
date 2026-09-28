@@ -1,0 +1,167 @@
+
+#include <ESP32Servo.h>
+
+// Ultrasonic sensor
+#define TRIG_PIN 5
+#define ECHO_PIN 18
+
+// L298N motor driver
+#define IN1 26
+#define IN2 27
+#define IN3 32
+#define IN4 33
+
+// Servo motor
+#define SERVO_PIN 13
+
+#define OBSTACLE_DISTANCE 20
+
+Servo scanServo;
+
+int distance;
+int leftDistance;
+int rightDistance;
+
+// Measure distance using HC-SR04
+int getDistance() {
+  digitalWrite(TRIG_PIN, LOW);
+  delayMicroseconds(2);
+
+  digitalWrite(TRIG_PIN, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(TRIG_PIN, LOW);
+
+  long duration = pulseIn(ECHO_PIN, HIGH, 30000);
+
+  if (duration == 0) return 400;
+
+  return duration * 0.0343 / 2;
+}
+
+// Motor control
+void moveForward() {
+  digitalWrite(IN1, HIGH);
+  digitalWrite(IN2, LOW);
+  digitalWrite(IN3, HIGH);
+  digitalWrite(IN4, LOW);
+}
+
+void moveBackward() {
+  digitalWrite(IN1, LOW);
+  digitalWrite(IN2, HIGH);
+  digitalWrite(IN3, LOW);
+  digitalWrite(IN4, HIGH);
+}
+
+void turnRight() {
+  digitalWrite(IN1, HIGH);
+  digitalWrite(IN2, LOW);
+  digitalWrite(IN3, LOW);
+  digitalWrite(IN4, HIGH);
+}
+
+void turnLeft() {
+  digitalWrite(IN1, LOW);
+  digitalWrite(IN2, HIGH);
+  digitalWrite(IN3, HIGH);
+  digitalWrite(IN4, LOW);
+}
+
+void stopCar() {
+  digitalWrite(IN1, LOW);
+  digitalWrite(IN2, LOW);
+  digitalWrite(IN3, LOW);
+  digitalWrite(IN4, LOW);
+}
+
+// Scan left and right
+int scanDirection(int angle) {
+  scanServo.write(angle);
+  delay(500);
+
+  int d1 = getDistance();
+  delay(60);
+  int d2 = getDistance();
+
+  return (d1 + d2) / 2;
+}
+
+void setup() {
+  Serial.begin(115200);
+
+  pinMode(TRIG_PIN, OUTPUT);
+  pinMode(ECHO_PIN, INPUT);
+
+  pinMode(IN1, OUTPUT);
+  pinMode(IN2, OUTPUT);
+  pinMode(IN3, OUTPUT);
+  pinMode(IN4, OUTPUT);
+
+  scanServo.setPeriodHertz(50);
+  scanServo.attach(SERVO_PIN, 500, 2400);
+  scanServo.write(90);
+
+  delay(500);
+  stopCar();
+}
+
+void loop() {
+  scanServo.write(90);
+  delay(150);
+
+  distance = getDistance();
+
+  Serial.print("Front: ");
+  Serial.println(distance);
+
+  if (distance > OBSTACLE_DISTANCE) {
+    moveForward();
+  } else {
+    stopCar();
+    delay(250);
+
+    moveBackward();
+    delay(350);
+    stopCar();
+    delay(200);
+
+    // Scan left
+    leftDistance = scanDirection(150);
+
+    // Scan right
+    rightDistance = scanDirection(30);
+
+    // Return sensor to center
+    scanServo.write(90);
+    delay(250);
+
+    Serial.print("Left: ");
+    Serial.println(leftDistance);
+
+    Serial.print("Right: ");
+    Serial.println(rightDistance);
+
+    // Choose direction with more space
+    if (leftDistance > rightDistance &&
+        leftDistance > OBSTACLE_DISTANCE) {
+      turnLeft();
+      delay(500);
+    }
+    else if (rightDistance > OBSTACLE_DISTANCE) {
+      turnRight();
+      delay(500);
+    }
+    else {
+      // Both sides blocked: turn around
+      moveBackward();
+      delay(500);
+      turnRight();
+      delay(900);
+    }
+
+    stopCar();
+    delay(200);
+  }
+
+  delay(50);
+}
